@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chart Board with API Key</title>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      display: flex;
+      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+    }
+    #chart_div {
+      width: 700px;
+      height: 400px;
+      margin-top: 20px;
+    }
+    input, button {
+      padding: 8px 12px;
+      margin: 5px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Chart Board with API Key</h1>
+    <input type="text" v-model="apiKey" placeholder="Enter API Key" />
+    <input type="text" v-model="city" placeholder="Enter City for Weather Data" />
+    <button @click="fetchWeatherData">Get Weather Chart</button>
+    <div v-if="error" style="color: red; margin-top: 10px;">{{ error }}</div>
+    <div id="chart_div"></div>
+  </div>
+
+  <script>
+    google.charts.load('current', {'packages':['corechart']});
+
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          apiKey: '',
+          city: '',
+          error: null,
+          weatherData: []
+        };
+      },
+      methods: {
+        async fetchWeatherData() {
+          this.error = null;
+          this.weatherData = [];
+          if (!this.apiKey) {
+            this.error = 'Please enter an API key.';
+            return;
+          }
+          if (!this.city) {
+            this.error = 'Please enter a city name.';
+            return;
+          }
+          try {
+            // Fetch 5-day weather forecast data from OpenWeatherMap API
+            const response = await fetch(
+              `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(this.city)}&appid=${this.apiKey}&units=metric`
+            );
+            if (!response.ok) {
+              throw new Error('Failed to fetch weather data.');
+            }
+            const data = await response.json();
+            if (data.cod !== "200") {
+              throw new Error(data.message || 'Error fetching weather data.');
+            }
+            // Process data to get temperature for each day (group by date)
+            const tempByDate = {};
+            data.list.forEach(item => {
+              const date = item.dt_txt.split(' ')[0];
+              if (!tempByDate[date]) {
+                tempByDate[date] = [];
+              }
+              tempByDate[date].push(item.main.temp);
+            });
+            this.weatherData = Object.entries(tempByDate).map(([date, temps]) => {
+              const avgTemp = temps.reduce((a,b) => a+b, 0) / temps.length;
+              return [date, avgTemp];
+            });
+            this.drawChart();
+          } catch (err) {
+            this.error = err.message;
+          }
+        },
+        drawChart() {
+          if (!this.weatherData.length) return;
+          const dataArray = [['Date', 'Avg Temperature (°C)'], ...this.weatherData];
+          const data = google.visualization.arrayToDataTable(dataArray);
+          const options = {
+            title: `5-Day Average Temperature Forecast for ${this.city}`,
+            curveType: 'function',
+            legend: { position: 'bottom' },
+            vAxis: { title: 'Temperature (°C)' },
+            hAxis: { title: 'Date' }
+          };
+          const chart = new google.visualization.LineChart(document.getElementById('chart_div'));
+          chart.draw(data, options);
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
